@@ -1,0 +1,238 @@
+<html>
+<head>
+    <title>Mahiro Network V4</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.3.0/lib/p5.js"></script>
+    <script src="editorCanvas.js"></script>
+    <script src="replayLoader.js"></script>
+    <script src="upperTimeline.js"></script>
+    <script src="lowerTimeline.js"></script>
+    <script src="preloader.js"></script>
+    <script src="sliders.js"></script>
+    <script src="renderer.js"></script>
+
+
+    <!-- OsuPreview Variables -->
+
+    <div class="x-viewbox" id="container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+    <script src="util.js"></script>
+
+    <script src="beatmap.js"></script>
+    <script src="timingpoint.js"></script>
+    <script src="hitobject.js"></script>
+    <script src="point.js"></script>
+    <script src="scroll.js"></script>
+
+    <script src="standard.js"></script>
+    <script src="hitcircle.js"></script>
+    <script src="slider.js"></script>
+    <script src="curve.js"></script>
+    <script src="equaldistancemulticurve.js"></script>
+    <script src="linearbezier.js"></script>
+    <script src="catmullcurve.js"></script>
+    <script src="curvetype.js"></script>
+    <script src="bezier2.js"></script>
+    <script src="centripetalcatmullrom.js"></script>
+    <script src="circumstancedcircle.js"></script>
+    <script src="spinner.js"></script>
+
+    <script src="taiko.js"></script>
+    <script src="donkat.js"></script>
+    <script src="drumroll.js"></script>
+    <script src="shaker.js"></script>
+
+    <script src="mania.js"></script>
+    <script src="hitnote.js"></script>
+    <script src="holdnote.js"></script>
+
+    <script src="preview.js"></script>
+    <script src="viewbox.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #F6F6F6;
+        }
+
+        #container {
+            /* background-color: black; */
+            position: absolute;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+<script>
+    var audio = new Audio();
+    var preview
+
+
+    function ready(diff, id) {
+        const $ = require('jQuery')
+        preview = new Preview($('#container')[0]);
+
+
+        $(window).on('hashchange', function () {
+            $(audio).trigger('pause');
+
+            $('#mania').removeClass('e');
+
+            $('#play').removeClass('e');
+
+            let beatmapID = isNaN(location.hash.split('#')[1]) ? 75 : location.hash.split('#')[1];
+            let setID;
+            let beatmapsetdata;
+            let osufiledata;
+            !async function () {
+                let self = this;
+                let data = await fetch("http://localhost:3000/api")
+                    .then((response) => response.text())
+                    .then(data => {
+                        let tmp = btoa(diff.replace(/&/g, '%26'));
+                        let audiofile = `http://localhost:3000/api/?id=${id}&sd=${tmp}&type=audio`
+                        let bgURL = 'i.imgur.com/GyqEZHR.png'
+                        let osuURL = `http://localhost:3000/api/?id=${id}&sd=${tmp}&type=beatmap`
+                        console.log(audiofile, osuURL)
+                        preview.load(beatmapID, bgURL, osuURL, function () {
+                            audio.src = audiofile;
+                            loaded = true;
+                            timeline.analyze()
+                            lower_timeline.redraw()
+                            initSliders()
+                            $('#title a').prop('href', '//osu.ppy.sh/b/' + beatmapID)
+                                .text(this.beatmap.toString());
+                            if (self.beatmap instanceof Mania) {
+                                $('#mania').addClass('e');
+                                $('#scroll').text(self.beatmap.scrollSpeed);
+                            }
+                            $('#play').addClass('e');
+                        }, function (e) {
+                            alert(e);
+                            console.log(e);
+                        });
+
+                        return data.ParentSetID;
+                    }).catch(error => {
+                        console.error(error);
+                    });
+            }();
+        }).trigger('hashchange');
+
+        $(document.body).on('mousemove', function () {
+            let self = $(this);
+            clearTimeout(self.data('h'));
+            self.addClass('h').data('h', setTimeout(function () {
+                if (!audio.paused) {
+                    self.removeClass('h');
+                }
+            }, 3000));
+        });
+
+        $(audio).on('pause', function (e) {
+            $(document.body).trigger('mousemove');
+            $('#play').addClass('e');
+        }).on('play', function (e) {
+            preview.beatmap.refresh();
+            if (e.isTrigger) {
+                e.preventDefault();
+                preview.at(audio.currentTime * 1000);
+            } else {
+                $('#play').removeClass('e');
+                requestAnimationFrame(function foo() {
+                    preview.at(audio.currentTime * 1000);
+                    if (!audio.paused) {
+                        requestAnimationFrame(foo);
+                    }
+                });
+            }
+        }).on('durationchange', function () {
+            $('#progress').val(0).prop('max', this.duration);
+            $('#volume').trigger('change');
+            $('#speed .e').trigger('click');
+        }).on('timeupdate', function () {
+            $('#progress').val(this.currentTime);
+        });
+
+        $('#progress').on('change', function () {
+            audio.currentTime = this.value;
+            $(audio).trigger('play');
+        });
+
+        $('#volume').on('change', function () {
+            audio.volume = this.value / 100;
+        });
+
+        $('#speed button').on('click', function () {
+            $('#speed .e').removeClass('e');
+            audio.playbackRate = $(this).addClass('e').val();
+        });
+
+        $('#mania button').on('click', function () {
+            var val = this.value | 0;
+            if (val) {
+                preview.beatmap.scrollSpeed += val;
+                $('#scroll').text(preview.beatmap.scrollSpeed);
+                $(audio).trigger('play');
+            }
+        });
+
+        $('#play').on('click', function (e) {
+            e.preventDefault();
+            if ($(this).hasClass('e')) {
+                audio.play();
+            } else {
+                audio.pause();
+            }
+        });
+
+        $('#fullscreen').on('click', function (e) {
+            e.preventDefault();
+            var doc = window.document;
+            var docEl = doc.documentElement;
+
+            var requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            var cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+            if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+                requestFullScreen.call(docEl);
+            } else {
+                cancelFullScreen.call(doc);
+            }
+        });
+
+
+    }
+
+</script>
+
+
+<div class="dragger" style="-webkit-app-region: drag">
+
+</div>
+
+<style>
+    .dragger {
+        position: absolute;
+        width: 80%;
+        height: 24px;
+    }
+
+    body {
+        margin: 0;
+        overflow: hidden;
+    }
+
+    #gui {
+        position: absolute;
+        top: 65px;
+        right: 10px
+    }
+</style>
+
+<script>
+
+</script>
+</body>
+</html>
